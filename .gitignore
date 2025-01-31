@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+
+# Data
+data/
+*.xlsx
+*.xls
+
+# OS
+.DS_Store
+.env
