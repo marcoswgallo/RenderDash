@@ -37,54 +37,95 @@ def list_excel_files():
     return sorted(excel_files, key=lambda x: x['display_name'])
 
 # Função para carregar dados
-@st.cache_data
+@st.cache_data(ttl=3600)  # Cache por 1 hora
 def load_data(file_path):
     try:
         # Especifica os tipos de dados na leitura
         dtype_dict = {
-            'BASE': 'str',
-            'SERVIÇO': 'str',
-            'HABILIDADE DE TRABALHO': 'str',
-            'STATUS ATIVIDADE': 'str',
-            'PACOTE': 'str',
-            'CLIENTE': 'str',
-            'CIDADES': 'str',
-            'NODE': 'str',
-            'TECNICO': 'str',
-            'LOGIN': 'str',
-            'SUPERVISOR': 'str',
-            'COD STATUS': 'str'
+            'BASE': 'category',  # Usando category para strings que se repetem
+            'SERVIÇO': 'category',
+            'HABILIDADE DE TRABALHO': 'category',
+            'STATUS ATIVIDADE': 'category',
+            'PACOTE': 'category',
+            'CLIENTE': 'category',
+            'CIDADES': 'category',
+            'NODE': 'category',
+            'TECNICO': 'category',
+            'LOGIN': 'category',
+            'SUPERVISOR': 'category',
+            'COD STATUS': 'category'
         }
         
         # Parse dates na leitura
         date_columns = ['DATA_TOA', 'DATA', 'INÍCIO', 'FIM', 'DESLOCAMENTO']
         
-        df = pd.read_excel(
-            file_path,
-            dtype=dtype_dict,
-            parse_dates=date_columns
-        )
+        # Lê apenas as colunas necessárias
+        usecols = list(dtype_dict.keys()) + date_columns + [
+            'COP REVERTEU', 'LATIDUDE', 'LONGITUDE', 'COD',
+            'TIPO OS', 'VALOR TÉCNICO', 'VALOR EMPRESA', 'PONTO'
+        ]
         
-        # Converte colunas numéricas explicitamente
-        numeric_columns = {
-            'COP REVERTEU': 'float64',
-            'LATIDUDE': 'float64',
-            'LONGITUDE': 'float64',
-            'COD': 'float64',
-            'TIPO OS': 'float64',
-            'VALOR TÉCNICO': 'float64',
-            'VALOR EMPRESA': 'float64',
-            'PONTO': 'float64'
-        }
+        # Lê o arquivo em chunks para melhor performance
+        chunks = []
+        chunk_size = 10000  # Ajuste este valor conforme necessário
         
-        for col, dtype in numeric_columns.items():
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').astype(dtype)
+        with st.spinner('Carregando dados...'):
+            for chunk in pd.read_excel(
+                file_path,
+                dtype=dtype_dict,
+                parse_dates=date_columns,
+                usecols=usecols,
+                chunksize=chunk_size
+            ):
+                # Converte colunas numéricas no chunk
+                numeric_columns = {
+                    'COP REVERTEU': 'float32',  # Usando float32 em vez de float64
+                    'LATIDUDE': 'float32',
+                    'LONGITUDE': 'float32',
+                    'COD': 'int32',  # Usando int32 em vez de int64
+                    'TIPO OS': 'int32',
+                    'VALOR TÉCNICO': 'float32',
+                    'VALOR EMPRESA': 'float32',
+                    'PONTO': 'float32'
+                }
+                
+                for col, dtype in numeric_columns.items():
+                    if col in chunk.columns:
+                        chunk[col] = pd.to_numeric(chunk[col], errors='coerce').astype(dtype)
+                
+                chunks.append(chunk)
+        
+        # Combina todos os chunks
+        df = pd.concat(chunks, ignore_index=True)
         
         return df
     except Exception as e:
         st.error(f"Erro ao carregar arquivo: {e}")
         return None
+
+@st.cache_data(ttl=3600)
+def process_dataframe(df, bases_filtro=None):
+    """Processa o DataFrame aplicando filtros e agregações"""
+    try:
+        if bases_filtro:
+            df = df[df['BASE'].isin(bases_filtro)]
+        
+        # Pré-calcula algumas agregações comuns
+        stats = {
+            'total_registros': len(df),
+            'cidades_unicas': df['CIDADES'].nunique(),
+            'periodo': {
+                'inicio': df['DATA'].min(),
+                'fim': df['DATA'].max()
+            } if 'DATA' in df.columns else None,
+            'valor_total_tecnico': df['VALOR TÉCNICO'].sum() if 'VALOR TÉCNICO' in df.columns else 0,
+            'valor_total_empresa': df['VALOR EMPRESA'].sum() if 'VALOR EMPRESA' in df.columns else 0
+        }
+        
+        return df, stats
+    except Exception as e:
+        st.error(f"Erro ao processar dados: {e}")
+        return None, None
 
 # Título principal
 st.title("📊 Dashboard de Análise de Dados")
@@ -202,11 +243,9 @@ with st.sidebar:
             )
             
             # Aplica os filtros
-            df_filtered = st.session_state.df.copy()
-            if bases_filtro:
-                df_filtered = df_filtered[df_filtered['BASE'].isin(bases_filtro)]
+            df_filtered, stats = process_dataframe(st.session_state.df, bases_filtro)
             
-            st.metric("Registros Filtrados", len(df_filtered))
+            st.metric("Registros Filtrados", stats['total_registros'])
             
             # Atualiza o DataFrame filtrado na sessão
             st.session_state.df_filtered = df_filtered
