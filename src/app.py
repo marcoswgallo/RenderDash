@@ -65,40 +65,36 @@ def load_data(file_path):
             'TIPO OS', 'VALOR TÉCNICO', 'VALOR EMPRESA', 'PONTO'
         ]
         
-        # Lê o arquivo em chunks para melhor performance
-        chunks = []
-        chunk_size = 10000  # Ajuste este valor conforme necessário
-        
         with st.spinner('Carregando dados...'):
-            for chunk in pd.read_excel(
+            # Lê o arquivo otimizando a memória
+            df = pd.read_excel(
                 file_path,
                 dtype=dtype_dict,
                 parse_dates=date_columns,
-                usecols=usecols,
-                chunksize=chunk_size
-            ):
-                # Converte colunas numéricas no chunk
-                numeric_columns = {
-                    'COP REVERTEU': 'float32',  # Usando float32 em vez de float64
-                    'LATIDUDE': 'float32',
-                    'LONGITUDE': 'float32',
-                    'COD': 'int32',  # Usando int32 em vez de int64
-                    'TIPO OS': 'int32',
-                    'VALOR TÉCNICO': 'float32',
-                    'VALOR EMPRESA': 'float32',
-                    'PONTO': 'float32'
-                }
-                
-                for col, dtype in numeric_columns.items():
-                    if col in chunk.columns:
-                        chunk[col] = pd.to_numeric(chunk[col], errors='coerce').astype(dtype)
-                
-                chunks.append(chunk)
-        
-        # Combina todos os chunks
-        df = pd.concat(chunks, ignore_index=True)
-        
-        return df
+                usecols=usecols
+            )
+            
+            # Converte colunas numéricas para tipos mais eficientes
+            numeric_columns = {
+                'COP REVERTEU': 'float32',  # Usando float32 em vez de float64
+                'LATIDUDE': 'float32',
+                'LONGITUDE': 'float32',
+                'COD': 'int32',  # Usando int32 em vez de int64
+                'TIPO OS': 'int32',
+                'VALOR TÉCNICO': 'float32',
+                'VALOR EMPRESA': 'float32',
+                'PONTO': 'float32'
+            }
+            
+            for col, dtype in numeric_columns.items():
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').astype(dtype)
+            
+            # Otimiza o uso de memória
+            df = df.copy()  # Faz uma cópia limpa para liberar memória
+            
+            return df
+            
     except Exception as e:
         st.error(f"Erro ao carregar arquivo: {e}")
         return None
@@ -108,12 +104,12 @@ def process_dataframe(df, bases_filtro=None):
     """Processa o DataFrame aplicando filtros e agregações"""
     try:
         if bases_filtro:
-            df = df[df['BASE'].isin(bases_filtro)]
+            df = df[df['BASE'].isin(bases_filtro)].copy()  # Usa copy para otimizar memória
         
         # Pré-calcula algumas agregações comuns
         stats = {
             'total_registros': len(df),
-            'cidades_unicas': df['CIDADES'].nunique(),
+            'cidades_unicas': df['CIDADES'].nunique() if 'CIDADES' in df.columns else 0,
             'periodo': {
                 'inicio': df['DATA'].min(),
                 'fim': df['DATA'].max()
