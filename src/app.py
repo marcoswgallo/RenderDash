@@ -40,7 +40,47 @@ def list_excel_files():
 @st.cache_data
 def load_data(file_path):
     try:
-        df = pd.read_excel(file_path)
+        # Especifica os tipos de dados na leitura
+        dtype_dict = {
+            'BASE': 'str',
+            'SERVIÇO': 'str',
+            'HABILIDADE DE TRABALHO': 'str',
+            'STATUS ATIVIDADE': 'str',
+            'PACOTE': 'str',
+            'CLIENTE': 'str',
+            'CIDADES': 'str',
+            'NODE': 'str',
+            'TECNICO': 'str',
+            'LOGIN': 'str',
+            'SUPERVISOR': 'str',
+            'COD STATUS': 'str'
+        }
+        
+        # Parse dates na leitura
+        date_columns = ['DATA_TOA', 'DATA', 'INÍCIO', 'FIM', 'DESLOCAMENTO']
+        
+        df = pd.read_excel(
+            file_path,
+            dtype=dtype_dict,
+            parse_dates=date_columns
+        )
+        
+        # Converte colunas numéricas explicitamente
+        numeric_columns = {
+            'COP REVERTEU': 'float64',
+            'LATIDUDE': 'float64',
+            'LONGITUDE': 'float64',
+            'COD': 'float64',
+            'TIPO OS': 'float64',
+            'VALOR TÉCNICO': 'float64',
+            'VALOR EMPRESA': 'float64',
+            'PONTO': 'float64'
+        }
+        
+        for col, dtype in numeric_columns.items():
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').astype(dtype)
+        
         return df
     except Exception as e:
         st.error(f"Erro ao carregar arquivo: {e}")
@@ -283,21 +323,26 @@ if 'df' in locals() and df is not None:
         # Análises automáticas principais
         if 'DATA' in df.columns:
             try:
-                # Converte DATA para datetime se necessário
-                if not pd.api.types.is_datetime64_any_dtype(df['DATA']):
-                    df['DATA'] = pd.to_datetime(df['DATA'], errors='coerce')
-                
                 # 1. Análise por dia da semana
                 st.subheader("📅 Distribuição por Dia da Semana")
                 dias_semana = {
                     0: 'Segunda', 1: 'Terça', 2: 'Quarta', 3: 'Quinta',
                     4: 'Sexta', 5: 'Sábado', 6: 'Domingo'
                 }
-                df['Dia_Semana'] = df['DATA'].dt.dayofweek.map(dias_semana)
+                
+                # Garante que a coluna é datetime
+                if not pd.api.types.is_datetime64_any_dtype(df['DATA']):
+                    df['DATA'] = pd.to_datetime(df['DATA'], errors='coerce')
+                
+                df_dias = df.copy()
+                df_dias['Dia_Semana'] = df_dias['DATA'].dt.dayofweek.map(dias_semana)
+                dias_contagem = df_dias['Dia_Semana'].value_counts().reset_index()
+                dias_contagem.columns = ['Dia', 'Quantidade']
+                
                 fig_dias = px.bar(
-                    df['Dia_Semana'].value_counts().reset_index(),
-                    x='index',
-                    y='Dia_Semana',
+                    dias_contagem,
+                    x='Dia',
+                    y='Quantidade',
                     title='Quantidade de Atividades por Dia da Semana'
                 )
                 st.plotly_chart(fig_dias, use_container_width=True)
@@ -307,10 +352,13 @@ if 'df' in locals() and df is not None:
         # 2. Análise por cidade
         if 'CIDADES' in df.columns:
             st.subheader("🌆 Top 10 Cidades")
+            cidades_contagem = df['CIDADES'].value_counts().head(10).reset_index()
+            cidades_contagem.columns = ['Cidade', 'Quantidade']
+            
             fig_cidades = px.bar(
-                df['CIDADES'].value_counts().head(10).reset_index(),
-                x='index',
-                y='CIDADES',
+                cidades_contagem,
+                x='Cidade',
+                y='Quantidade',
                 title='Top 10 Cidades com Mais Atividades'
             )
             st.plotly_chart(fig_cidades, use_container_width=True)
