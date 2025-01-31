@@ -89,6 +89,18 @@ def load_data(file_path):
 # Título principal
 st.title("📊 Dashboard de Análise de Dados")
 
+# Inicialização do estado da sessão
+if 'selected_file' not in st.session_state:
+    st.session_state.selected_file = None
+if 'df' not in st.session_state:
+    st.session_state.df = None
+if 'tipo_base' not in st.session_state:
+    st.session_state.tipo_base = None
+if 'bases_filtro' not in st.session_state:
+    st.session_state.bases_filtro = None
+if 'df_filtered' not in st.session_state:
+    st.session_state.df_filtered = None
+
 # Sidebar para filtros
 with st.sidebar:
     st.header("📁 Seleção de Arquivo")
@@ -111,16 +123,19 @@ with st.sidebar:
         # Extrai apenas o nome do arquivo para exibição
         file_names = [os.path.basename(f) for f in excel_files]
         
-        selected_file = st.selectbox(
+        selected_file_index = st.selectbox(
             "Selecione o arquivo Excel:",
             range(len(excel_files)),
-            format_func=lambda x: file_names[x]
+            format_func=lambda x: file_names[x],
+            key='selected_file_index'
         )
         
         # Carrega o arquivo selecionado
-        df = load_data(excel_files[selected_file])
+        if st.session_state.selected_file != excel_files[selected_file_index]:
+            st.session_state.selected_file = excel_files[selected_file_index]
+            st.session_state.df = load_data(excel_files[selected_file_index])
         
-        if df is not None:
+        if st.session_state.df is not None:
             st.success(f"✅ Arquivo carregado com sucesso!")
             
             # Filtros por tipo de base
@@ -129,7 +144,8 @@ with st.sidebar:
             # Dicionário com as bases por tipo
             bases = {
                 'Instalação': [
-                    'BASE BAURURIBEIRAOOTUCATU',
+                    'BASE BAURU',
+                    'BASE BOTUCATU',
                     'BASE CAMPINAS',
                     'BASE LIMEIRA',
                     'BASE PAULINIA',
@@ -169,7 +185,8 @@ with st.sidebar:
             tipo_base = st.multiselect(
                 "Tipo de Base:",
                 options=list(bases.keys()),
-                default=list(bases.keys())
+                default=list(bases.keys()),
+                key='tipo_base'
             )
             
             # Filtro por bases específicas
@@ -180,19 +197,26 @@ with st.sidebar:
             bases_filtro = st.multiselect(
                 "Bases Específicas:",
                 options=bases_selecionadas,
-                default=bases_selecionadas
+                default=bases_selecionadas,
+                key='bases_filtro'
             )
             
             # Aplica os filtros
+            df_filtered = st.session_state.df.copy()
             if bases_filtro:
-                df = df[df['BASE'].isin(bases_filtro)]
+                df_filtered = df_filtered[df_filtered['BASE'].isin(bases_filtro)]
             
-            st.metric("Registros Filtrados", len(df))
+            st.metric("Registros Filtrados", len(df_filtered))
+            
+            # Atualiza o DataFrame filtrado na sessão
+            st.session_state.df_filtered = df_filtered
     else:
         st.warning("Nenhum arquivo Excel encontrado no diretório data.")
 
 # Layout principal
-if 'df' in locals() and df is not None:
+if 'df_filtered' in st.session_state and st.session_state.df_filtered is not None:
+    df = st.session_state.df_filtered
+    
     # Métricas principais em uma linha
     col1, col2, col3 = st.columns(3)
     with col1:
