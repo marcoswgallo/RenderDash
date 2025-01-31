@@ -200,7 +200,7 @@ with st.sidebar:
 # Layout principal
 if 'df' in locals() and df is not None:
     # Tabs para organizar o conteúdo
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Análise de Dados", "🔍 Qualidade dos Dados", "📈 Visualizações", "📋 Dicionário de Dados"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Análise de Dados", "🔍 Qualidade dos Dados", "📈 Análises e Visualizações", "📋 Dicionário de Dados"])
     
     with tab1:
         # Visão geral dos dados
@@ -278,32 +278,120 @@ if 'df' in locals() and df is not None:
                         st.code(f"df['{col}'] = pd.to_numeric(df['{col}'], errors='coerce')")
     
     with tab3:
-        if selected_columns:
-            # Análises básicas
+        st.header("📈 Análises e Visualizações")
+
+        # Análises automáticas principais
+        if 'DATA' in df.columns:
+            try:
+                # Converte DATA para datetime se necessário
+                if not pd.api.types.is_datetime64_any_dtype(df['DATA']):
+                    df['DATA'] = pd.to_datetime(df['DATA'], errors='coerce')
+                
+                # 1. Análise por dia da semana
+                st.subheader("📅 Distribuição por Dia da Semana")
+                dias_semana = {
+                    0: 'Segunda', 1: 'Terça', 2: 'Quarta', 3: 'Quinta',
+                    4: 'Sexta', 5: 'Sábado', 6: 'Domingo'
+                }
+                df['Dia_Semana'] = df['DATA'].dt.dayofweek.map(dias_semana)
+                fig_dias = px.bar(
+                    df['Dia_Semana'].value_counts().reset_index(),
+                    x='index',
+                    y='Dia_Semana',
+                    title='Quantidade de Atividades por Dia da Semana'
+                )
+                st.plotly_chart(fig_dias, use_container_width=True)
+            except Exception as e:
+                st.warning(f"Não foi possível gerar a análise por dia da semana: {e}")
+
+        # 2. Análise por cidade
+        if 'CIDADES' in df.columns:
+            st.subheader("🌆 Top 10 Cidades")
+            fig_cidades = px.bar(
+                df['CIDADES'].value_counts().head(10).reset_index(),
+                x='index',
+                y='CIDADES',
+                title='Top 10 Cidades com Mais Atividades'
+            )
+            st.plotly_chart(fig_cidades, use_container_width=True)
+
+        # 3. Análise por tipo de serviço
+        if 'SERVIÇO' in df.columns:
+            st.subheader("🔧 Distribuição por Tipo de Serviço")
+            fig_servico = px.pie(
+                df['SERVIÇO'].value_counts().reset_index(),
+                values='SERVIÇO',
+                names='index',
+                title='Distribuição de Tipos de Serviço'
+            )
+            st.plotly_chart(fig_servico, use_container_width=True)
+
+        # 4. Análise de Status
+        if 'STATUS ATIVIDADE' in df.columns:
+            st.subheader("📊 Status das Atividades")
+            fig_status = px.bar(
+                df['STATUS ATIVIDADE'].value_counts().reset_index(),
+                x='index',
+                y='STATUS ATIVIDADE',
+                title='Distribuição de Status das Atividades'
+            )
+            st.plotly_chart(fig_status, use_container_width=True)
+
+        # 5. Análise de Valores
+        if all(col in df.columns for col in ['VALOR TÉCNICO', 'VALOR EMPRESA']):
+            st.subheader("💰 Análise de Valores")
             col1, col2 = st.columns(2)
             
             with col1:
-                st.header("📈 Estatísticas Descritivas")
-                st.write(df[selected_columns].describe())
+                st.metric("Valor Total Técnico", f"R$ {df['VALOR TÉCNICO'].sum():,.2f}")
+                st.metric("Média por Atividade", f"R$ {df['VALOR TÉCNICO'].mean():,.2f}")
             
             with col2:
-                st.header("📊 Gráfico de Distribuição")
-                for col in selected_columns:
-                    if df[col].dtype in ['int64', 'float64']:
-                        fig = px.histogram(df, x=col, title=f'Distribuição de {col}')
-                        st.plotly_chart(fig, use_container_width=True)
-                        
-            # Análise temporal se houver uma coluna de data
-            date_columns = df.select_dtypes(include=['datetime64']).columns
-            if len(date_columns) > 0:
-                st.header("📅 Análise Temporal")
-                date_col = st.selectbox("Selecione a coluna de data:", date_columns)
+                st.metric("Valor Total Empresa", f"R$ {df['VALOR EMPRESA'].sum():,.2f}")
+                st.metric("Média por Atividade", f"R$ {df['VALOR EMPRESA'].mean():,.2f}")
+
+        # 6. Análise Temporal
+        if 'DATA' in df.columns:
+            st.subheader("📈 Evolução Temporal")
+            try:
+                # Agrupa por data e conta atividades
+                daily_activities = df.groupby('DATA').size().reset_index(name='Quantidade')
+                fig_temporal = px.line(
+                    daily_activities,
+                    x='DATA',
+                    y='Quantidade',
+                    title='Quantidade de Atividades por Dia'
+                )
+                st.plotly_chart(fig_temporal, use_container_width=True)
+            except Exception as e:
+                st.warning(f"Não foi possível gerar a análise temporal: {e}")
+
+        # 7. Análise de Eficiência
+        if all(col in df.columns for col in ['INÍCIO', 'FIM']):
+            st.subheader("⏱️ Análise de Tempo de Execução")
+            try:
+                # Converte para datetime se necessário
+                if not pd.api.types.is_datetime64_any_dtype(df['INÍCIO']):
+                    df['INÍCIO'] = pd.to_datetime(df['INÍCIO'], errors='coerce')
+                if not pd.api.types.is_datetime64_any_dtype(df['FIM']):
+                    df['FIM'] = pd.to_datetime(df['FIM'], errors='coerce')
                 
-                if date_col and len(selected_columns) > 0:
-                    numeric_cols = df[selected_columns].select_dtypes(include=['int64', 'float64']).columns
-                    for col in numeric_cols:
-                        fig = px.line(df, x=date_col, y=col, title=f'Evolução de {col} ao longo do tempo')
-                        st.plotly_chart(fig, use_container_width=True)
+                # Calcula duração em horas
+                df['Duração'] = (df['FIM'] - df['INÍCIO']).dt.total_seconds() / 3600
+                
+                fig_duracao = px.histogram(
+                    df[df['Duração'] > 0],  # Remove durações negativas ou zero
+                    x='Duração',
+                    title='Distribuição do Tempo de Execução (horas)',
+                    nbins=30
+                )
+                st.plotly_chart(fig_duracao, use_container_width=True)
+                
+                # Estatísticas de duração
+                st.metric("Tempo Médio de Execução", f"{df['Duração'].mean():,.2f} horas")
+                
+            except Exception as e:
+                st.warning(f"Não foi possível gerar a análise de tempo de execução: {e}")
 
     with tab4:
         st.header("📋 Dicionário de Dados")
