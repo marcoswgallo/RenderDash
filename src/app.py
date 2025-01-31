@@ -110,6 +110,54 @@ def validate_data_types(df):
             
     return analysis
 
+# Função para pré-processar os dados
+def preprocess_data(df):
+    """
+    Aplica correções automáticas nos dados
+    """
+    df = df.copy()  # Cria uma cópia para não modificar os dados originais
+    
+    # Conversão de datas
+    date_columns = ['DATA_TOA', 'DATA', 'INÍCIO', 'FIM', 'DESLOCAMENTO']
+    for col in date_columns:
+        if col in df.columns:
+            try:
+                df[col] = pd.to_datetime(df[col], errors='coerce')
+            except:
+                st.warning(f"Não foi possível converter a coluna {col} para data")
+    
+    # Conversão de números
+    numeric_columns = {
+        'COP REVERTEU': 'float64',
+        'LATIDUDE': 'float64',
+        'LONGITUDE': 'float64',
+        'COD': 'int64',
+        'TIPO OS': 'int64',
+        'VALOR TÉCNICO': 'float64',
+        'VALOR EMPRESA': 'float64',
+        'PONTO': 'float64'
+    }
+    
+    for col, dtype in numeric_columns.items():
+        if col in df.columns:
+            try:
+                df[col] = pd.to_numeric(df[col], errors='coerce').astype(dtype)
+            except:
+                st.warning(f"Não foi possível converter a coluna {col} para {dtype}")
+    
+    # Tratamento de valores nulos
+    categorical_columns = ['BASE', 'SERVIÇO', 'HABILIDADE DE TRABALHO', 'STATUS ATIVIDADE', 
+                         'PACOTE', 'CLIENTE', 'CIDADES', 'NODE', 'TECNICO', 'LOGIN', 
+                         'SUPERVISOR', 'COD STATUS']
+    
+    for col in categorical_columns:
+        if col in df.columns:
+            missing = df[col].isna().sum()
+            if missing > 0:
+                st.warning(f"Coluna {col} tem {missing} valores nulos")
+    
+    return df
+
 # Título principal
 st.title("📊 Dashboard de Análise de Dados")
 
@@ -140,18 +188,33 @@ with st.sidebar:
                     "Selecione as colunas para análise",
                     df.columns
                 )
+                
+                # Adiciona botão para pré-processar os dados
+                if st.button("🔄 Pré-processar Dados"):
+                    with st.spinner("Aplicando correções..."):
+                        df = preprocess_data(df)
+                        st.success("Dados pré-processados com sucesso!")
     else:
         st.warning("Nenhum arquivo Excel encontrado no diretório data.")
 
 # Layout principal
 if 'df' in locals() and df is not None:
     # Tabs para organizar o conteúdo
-    tab1, tab2, tab3 = st.tabs(["📊 Análise de Dados", "🔍 Qualidade dos Dados", "📈 Visualizações"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Análise de Dados", "🔍 Qualidade dos Dados", "📈 Visualizações", "📋 Dicionário de Dados"])
     
     with tab1:
         # Visão geral dos dados
         st.header("📋 Visão Geral dos Dados")
         st.dataframe(df.head(1000))
+        
+        # Informações adicionais
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total de Registros", len(df))
+        with col2:
+            st.metric("Período", f"{df['DATA'].min().strftime('%d/%m/%Y')} até {df['DATA'].max().strftime('%d/%m/%Y')}" if 'DATA' in df.columns else "N/A")
+        with col3:
+            st.metric("Cidades Únicas", df['CIDADES'].nunique() if 'CIDADES' in df.columns else "N/A")
     
     with tab2:
         st.header("🔍 Análise de Qualidade dos Dados")
@@ -228,6 +291,49 @@ if 'df' in locals() and df is not None:
                     for col in numeric_cols:
                         fig = px.line(df, x=date_col, y=col, title=f'Evolução de {col} ao longo do tempo')
                         st.plotly_chart(fig, use_container_width=True)
+
+    with tab4:
+        st.header("📋 Dicionário de Dados")
+        
+        dict_data = {
+            'DATA_TOA': 'Data e hora de abertura da atividade',
+            'DATA': 'Data da atividade',
+            'BASE': 'Base operacional',
+            'SERVIÇO': 'Tipo de serviço prestado',
+            'COP REVERTEU': 'Indicador de reversão pelo COP',
+            'HABILIDADE DE TRABALHO': 'Especialidade técnica necessária',
+            'STATUS ATIVIDADE': 'Status atual da atividade',
+            'PACOTE': 'Pacote de serviços',
+            'CLIENTE': 'Nome do cliente',
+            'CIDADES': 'Cidade onde o serviço foi prestado',
+            'LATIDUDE': 'Latitude da localização',
+            'LONGITUDE': 'Longitude da localização',
+            'NODE': 'Identificador do nó de rede',
+            'TECNICO': 'Nome do técnico',
+            'LOGIN': 'Login do técnico',
+            'SUPERVISOR': 'Nome do supervisor',
+            'INÍCIO': 'Hora de início da atividade',
+            'FIM': 'Hora de fim da atividade',
+            'DESLOCAMENTO': 'Tempo de deslocamento',
+            'COD': 'Código da atividade',
+            'COD STATUS': 'Código do status',
+            'TIPO OS': 'Tipo de ordem de serviço',
+            'VALOR TÉCNICO': 'Valor pago ao técnico',
+            'VALOR EMPRESA': 'Valor pago à empresa',
+            'PONTO': 'Pontuação da atividade'
+        }
+        
+        dict_df = pd.DataFrame([
+            {
+                'Coluna': col,
+                'Descrição': desc,
+                'Tipo Sugerido': 'Data' if col in ['DATA_TOA', 'DATA', 'INÍCIO', 'FIM', 'DESLOCAMENTO'] else 
+                                'Número' if col in ['COP REVERTEU', 'LATIDUDE', 'LONGITUDE', 'COD', 'TIPO OS', 'VALOR TÉCNICO', 'VALOR EMPRESA', 'PONTO'] else 'Texto'
+            }
+            for col, desc in dict_data.items()
+        ])
+        
+        st.dataframe(dict_df, use_container_width=True)
 
 else:
     st.info("👈 Selecione um arquivo na barra lateral para começar a análise.")
