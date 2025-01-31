@@ -12,21 +12,35 @@ st.set_page_config(
     layout="wide"
 )
 
+# Função para obter o caminho base do projeto
+def get_project_root():
+    """Retorna o caminho base do projeto"""
+    script_path = Path(__file__).resolve()  # Caminho absoluto do script atual
+    return script_path.parent.parent  # Volta dois níveis (src -> raiz do projeto)
+
 # Função para listar arquivos Excel disponíveis
 def list_excel_files():
-    data_dir = Path("data")
+    project_root = get_project_root()
+    data_dir = project_root / "data"
     excel_files = []
-    for year_dir in data_dir.glob("*"):
-        if year_dir.is_dir():
-            for excel_file in year_dir.glob("*.xlsx"):
-                excel_files.append(excel_file)
-    return sorted(excel_files)
+    
+    if data_dir.exists():
+        for year_dir in data_dir.glob("*"):
+            if year_dir.is_dir():
+                for excel_file in year_dir.glob("*.xlsx"):
+                    # Armazena o caminho completo e o nome para exibição
+                    excel_files.append({
+                        'path': excel_file,
+                        'display_name': f"{excel_file.parent.name}/{excel_file.stem}"
+                    })
+    return sorted(excel_files, key=lambda x: x['display_name'])
 
 # Função para carregar dados
 @st.cache_data
 def load_data(file_path):
     try:
-        return pd.read_excel(file_path)
+        df = pd.read_excel(file_path)
+        return df
     except Exception as e:
         st.error(f"Erro ao carregar arquivo: {e}")
         return None
@@ -44,11 +58,11 @@ with st.sidebar:
         selected_file = st.selectbox(
             "Selecione o período:",
             excel_files,
-            format_func=lambda x: x.stem  # Mostra apenas o nome do arquivo sem extensão
+            format_func=lambda x: x['display_name']
         )
         
         if selected_file:
-            df = load_data(selected_file)
+            df = load_data(selected_file['path'])
             
             if df is not None:
                 # Mostra informações básicas
