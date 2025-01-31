@@ -212,7 +212,20 @@ if 'df' in locals() and df is not None:
         with col1:
             st.metric("Total de Registros", len(df))
         with col2:
-            st.metric("Período", f"{df['DATA'].min().strftime('%d/%m/%Y')} até {df['DATA'].max().strftime('%d/%m/%Y')}" if 'DATA' in df.columns else "N/A")
+            if 'DATA' in df.columns:
+                try:
+                    # Tenta converter para datetime se ainda não for
+                    if not pd.api.types.is_datetime64_any_dtype(df['DATA']):
+                        data_col = pd.to_datetime(df['DATA'], errors='coerce')
+                    else:
+                        data_col = df['DATA']
+                    
+                    periodo = f"{data_col.min().strftime('%d/%m/%Y')} até {data_col.max().strftime('%d/%m/%Y')}"
+                except:
+                    periodo = "N/A"
+            else:
+                periodo = "N/A"
+            st.metric("Período", periodo)
         with col3:
             st.metric("Cidades Únicas", df['CIDADES'].nunique() if 'CIDADES' in df.columns else "N/A")
     
