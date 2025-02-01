@@ -36,13 +36,13 @@ def list_excel_files():
                     })
     return sorted(excel_files, key=lambda x: x['display_name'])
 
-# Função para carregar dados
-@st.cache_data(ttl=3600)  # Cache por 1 hora
-def load_data(file_path):
+# Função para converter Excel para JSON
+def convert_excel_to_json(excel_path, json_path):
+    """Converte arquivo Excel para JSON otimizado"""
     try:
-        # Especifica os tipos de dados na leitura
+        # Lê o Excel com tipos otimizados
         dtype_dict = {
-            'BASE': 'category',  # Usando category para strings que se repetem
+            'BASE': 'category',
             'SERVIÇO': 'category',
             'HABILIDADE DE TRABALHO': 'category',
             'STATUS ATIVIDADE': 'category',
@@ -56,30 +56,68 @@ def load_data(file_path):
             'COD STATUS': 'category'
         }
         
-        # Parse dates na leitura
         date_columns = ['DATA_TOA', 'DATA', 'INÍCIO', 'FIM', 'DESLOCAMENTO']
         
-        # Lê apenas as colunas necessárias
-        usecols = list(dtype_dict.keys()) + date_columns + [
-            'COP REVERTEU', 'LATIDUDE', 'LONGITUDE', 'COD',
-            'TIPO OS', 'VALOR TÉCNICO', 'VALOR EMPRESA', 'PONTO'
-        ]
+        df = pd.read_excel(
+            excel_path,
+            dtype=dtype_dict,
+            parse_dates=date_columns
+        )
         
-        with st.spinner('Carregando dados...'):
-            # Lê o arquivo otimizando a memória
-            df = pd.read_excel(
-                file_path,
-                dtype=dtype_dict,
-                parse_dates=date_columns,
-                usecols=usecols
-            )
+        # Converte datas para string ISO format para JSON
+        for col in date_columns:
+            if col in df.columns:
+                df[col] = df[col].dt.strftime('%Y-%m-%dT%H:%M:%S')
+        
+        # Salva como JSON de forma otimizada
+        df.to_json(json_path, orient='records', date_format='iso')
+        return True
+    except Exception as e:
+        st.error(f"Erro ao converter Excel para JSON: {e}")
+        return False
+
+# Função para carregar dados
+@st.cache_data(ttl=3600)  # Cache por 1 hora
+def load_data(file_path):
+    try:
+        # Verifica se é Excel ou JSON
+        if file_path.endswith('.xlsx'):
+            # Cria o caminho para o JSON correspondente
+            json_path = file_path.replace('.xlsx', '.json')
             
-            # Converte colunas numéricas para tipos mais eficientes
+            # Se o JSON não existe, converte do Excel
+            if not os.path.exists(json_path):
+                with st.spinner('Convertendo Excel para JSON...'):
+                    if not convert_excel_to_json(file_path, json_path):
+                        return None
+            
+            file_path = json_path
+        
+        # Carrega do JSON
+        with st.spinner('Carregando dados...'):
+            df = pd.read_json(file_path, orient='records')
+            
+            # Converte datas de volta para datetime
+            date_columns = ['DATA_TOA', 'DATA', 'INÍCIO', 'FIM', 'DESLOCAMENTO']
+            for col in date_columns:
+                if col in df.columns:
+                    df[col] = pd.to_datetime(df[col])
+            
+            # Converte tipos para otimizar memória
+            category_columns = [
+                'BASE', 'SERVIÇO', 'HABILIDADE DE TRABALHO', 'STATUS ATIVIDADE',
+                'PACOTE', 'CLIENTE', 'CIDADES', 'NODE', 'TECNICO', 'LOGIN',
+                'SUPERVISOR', 'COD STATUS'
+            ]
+            for col in category_columns:
+                if col in df.columns:
+                    df[col] = df[col].astype('category')
+            
             numeric_columns = {
-                'COP REVERTEU': 'float32',  # Usando float32 em vez de float64
+                'COP REVERTEU': 'float32',
                 'LATIDUDE': 'float32',
                 'LONGITUDE': 'float32',
-                'COD': 'int32',  # Usando int32 em vez de int64
+                'COD': 'int32',
                 'TIPO OS': 'int32',
                 'VALOR TÉCNICO': 'float32',
                 'VALOR EMPRESA': 'float32',
@@ -90,15 +128,13 @@ def load_data(file_path):
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors='coerce').astype(dtype)
             
-            # Otimiza o uso de memória
-            df = df.copy()  # Faz uma cópia limpa para liberar memória
-            
             return df
             
     except Exception as e:
         st.error(f"Erro ao carregar arquivo: {e}")
         return None
 
+# Função para processar DataFrame
 @st.cache_data(ttl=3600)
 def process_dataframe(df, bases_filtro=None):
     """Processa o DataFrame aplicando filtros e agregações"""
