@@ -5,6 +5,8 @@ from pathlib import Path
 import os
 from datetime import datetime
 import numpy as np
+import gzip
+import json
 
 # Configuração da página
 st.set_page_config(
@@ -80,55 +82,70 @@ def convert_excel_to_json(excel_path, json_path):
 @st.cache_data(ttl=3600)  # Cache por 1 hora
 def load_data(file_path):
     try:
-        # Verifica se é Excel ou JSON
+        # Se é Excel, procura por um JSON comprimido correspondente
         if file_path.endswith('.xlsx'):
-            # Cria o caminho para o JSON correspondente
-            json_path = file_path.replace('.xlsx', '.json')
-            
-            # Se o JSON não existe, converte do Excel
-            if not os.path.exists(json_path):
-                with st.spinner('Convertendo Excel para JSON...'):
-                    if not convert_excel_to_json(file_path, json_path):
-                        return None
-            
-            file_path = json_path
+            json_path = file_path.replace('.xlsx', '.json.gz')
+            if os.path.exists(json_path):
+                file_path = json_path
         
-        # Carrega do JSON
-        with st.spinner('Carregando dados...'):
-            df = pd.read_json(file_path, orient='records')
-            
-            # Converte datas de volta para datetime
-            date_columns = ['DATA_TOA', 'DATA', 'INÍCIO', 'FIM', 'DESLOCAMENTO']
-            for col in date_columns:
-                if col in df.columns:
-                    df[col] = pd.to_datetime(df[col])
-            
-            # Converte tipos para otimizar memória
-            category_columns = [
-                'BASE', 'SERVIÇO', 'HABILIDADE DE TRABALHO', 'STATUS ATIVIDADE',
-                'PACOTE', 'CLIENTE', 'CIDADES', 'NODE', 'TECNICO', 'LOGIN',
-                'SUPERVISOR', 'COD STATUS'
-            ]
-            for col in category_columns:
-                if col in df.columns:
-                    df[col] = df[col].astype('category')
-            
-            numeric_columns = {
-                'COP REVERTEU': 'float32',
-                'LATIDUDE': 'float32',
-                'LONGITUDE': 'float32',
-                'COD': 'int32',
-                'TIPO OS': 'int32',
-                'VALOR TÉCNICO': 'float32',
-                'VALOR EMPRESA': 'float32',
-                'PONTO': 'float32'
-            }
-            
-            for col, dtype in numeric_columns.items():
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce').astype(dtype)
-            
-            return df
+        # Carrega do JSON comprimido
+        if file_path.endswith('.json.gz'):
+            with st.spinner('Carregando dados...'):
+                with gzip.open(file_path, 'rt') as f:
+                    data = json.load(f)
+                
+                # Recria o DataFrame
+                df = pd.DataFrame(data['data'], columns=data['columns'])
+                
+                # Converte tipos de volta
+                for col, dtype in data['dtypes'].items():
+                    if 'datetime' in dtype:
+                        df[col] = pd.to_datetime(df[col], format='%Y%m%d%H%M%S', errors='coerce')
+                    elif 'category' in dtype:
+                        df[col] = df[col].astype('category')
+                    elif 'float32' in dtype:
+                        df[col] = pd.to_numeric(df[col], errors='coerce').astype('float32')
+                    elif 'int32' in dtype:
+                        df[col] = pd.to_numeric(df[col], errors='coerce').astype('int32')
+                
+                return df
+        
+        # Se não encontrou JSON, carrega do Excel
+        else:
+            with st.spinner('Carregando dados do Excel...'):
+                dtype_dict = {
+                    'BASE': 'category',
+                    'SERVIÇO': 'category',
+                    'HABILIDADE DE TRABALHO': 'category',
+                    'STATUS ATIVIDADE': 'category',
+                    'PACOTE': 'category',
+                    'CLIENTE': 'category',
+                    'CIDADES': 'category',
+                    'NODE': 'category',
+                    'TECNICO': 'category',
+                    'LOGIN': 'category',
+                    'SUPERVISOR': 'category',
+                    'COD STATUS': 'category'
+                }
+                
+                df = pd.read_excel(file_path, dtype=dtype_dict)
+                
+                numeric_columns = {
+                    'COP REVERTEU': 'float32',
+                    'LATIDUDE': 'float32',
+                    'LONGITUDE': 'float32',
+                    'COD': 'float32',
+                    'TIPO OS': 'float32',
+                    'VALOR TÉCNICO': 'float32',
+                    'VALOR EMPRESA': 'float32',
+                    'PONTO': 'float32'
+                }
+                
+                for col, dtype in numeric_columns.items():
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors='coerce').astype(dtype)
+                
+                return df
             
     except Exception as e:
         st.error(f"Erro ao carregar arquivo: {e}")
