@@ -195,7 +195,7 @@ if 'df_filtered' not in st.session_state:
 with st.sidebar:
     st.header("📁 Seleção de Arquivo")
     
-    # Lista todos os arquivos Excel no diretório data
+    # Lista todos os arquivos Excel e JSON.gz no diretório data
     project_root = get_project_root()
     data_dir = project_root / "data"
     excel_files = []
@@ -203,7 +203,7 @@ with st.sidebar:
         year_dir = os.path.join(data_dir, year)
         if os.path.isdir(year_dir):
             for file in os.listdir(year_dir):
-                if file.endswith('.xlsx'):
+                if file.endswith('.xlsx') or file.endswith('.json.gz'):
                     excel_files.append(os.path.join(year_dir, file))
     
     if excel_files:
@@ -214,7 +214,7 @@ with st.sidebar:
         file_names = [os.path.basename(f) for f in excel_files]
         
         selected_file_index = st.selectbox(
-            "Selecione o arquivo Excel:",
+            "Selecione o arquivo:",
             range(len(excel_files)),
             format_func=lambda x: file_names[x],
             key='selected_file_index'
@@ -234,8 +234,7 @@ with st.sidebar:
             # Dicionário com as bases por tipo
             bases = {
                 'Instalação': [
-                    'BASE BAURU',
-                    'BASE BOTUCATU',
+                    'BASE BAURURIBEIRAOOTUCATU',
                     'BASE CAMPINAS',
                     'BASE LIMEIRA',
                     'BASE PAULINIA',
@@ -272,32 +271,44 @@ with st.sidebar:
             }
             
             # Filtro por tipo de base
+            tipos_base = list(bases.keys())
+            if 'tipo_base' not in st.session_state:
+                st.session_state.tipo_base = tipos_base
+            
             tipo_base = st.multiselect(
                 "Tipo de Base:",
-                options=list(bases.keys()),
-                default=list(bases.keys()),
-                key='tipo_base'
+                options=tipos_base,
+                default=st.session_state.tipo_base,
+                key='tipo_base_select'
             )
+            st.session_state.tipo_base = tipo_base
             
             # Filtro por bases específicas
             bases_selecionadas = []
             for tipo in tipo_base:
                 bases_selecionadas.extend(bases[tipo])
             
+            if 'bases_filtro' not in st.session_state:
+                st.session_state.bases_filtro = bases_selecionadas
+            
             bases_filtro = st.multiselect(
                 "Bases Específicas:",
                 options=bases_selecionadas,
-                default=bases_selecionadas,
-                key='bases_filtro'
+                default=st.session_state.bases_filtro,
+                key='bases_filtro_select'
             )
+            st.session_state.bases_filtro = bases_filtro
             
             # Aplica os filtros
-            df_filtered, stats = process_dataframe(st.session_state.df, bases_filtro)
+            df_filtered = st.session_state.df.copy()
+            if bases_filtro:
+                df_filtered = df_filtered[df_filtered['BASE'].isin(bases_filtro)]
             
-            st.metric("Registros Filtrados", stats['total_registros'])
+            st.metric("Registros Filtrados", len(df_filtered))
             
             # Atualiza o DataFrame filtrado na sessão
             st.session_state.df_filtered = df_filtered
+
     else:
         st.warning("Nenhum arquivo Excel encontrado no diretório data.")
 
